@@ -2,27 +2,23 @@ package singleflight
 
 import "sync"
 
-// call is an in-flight or completed Do call
+// call代表正在进行中或已经结束的请求，使用sync.WaitGroup避免重入发生缓存雪崩问题
 type call struct {
 	wg  sync.WaitGroup
 	val interface{}
 	err error
 }
 
-// Group represents a class of work and forms a namespace in which
-// units of work can be executed with duplicate suppression.
+// Group 用于管理不同的请求call
 type Group struct {
 	mu sync.Mutex       // protects m
 	m  map[string]*call // lazily initialized
 }
 
-// Do executes and returns the results of the given function, making
-// sure that only one execution is in-flight for a given key at a
-// time. If a duplicate comes in, the duplicate caller waits for the
-// original to complete and receives the same results.
+// 实际调用的方法，虽然可能会有N个请求，但倘若缓存中无数据的话只会访问数据库一次，其他的请求直接返回缓存值，不会访问数据库
 func (g *Group) Do(key string, fn func() (interface{}, error)) (interface{}, error) {
 	g.mu.Lock()
-	if g.m == nil {
+	if g.m == nil { //懒加载，直到使用的时候才进行初始化
 		g.m = make(map[string]*call)
 	}
 	if c, ok := g.m[key]; ok {

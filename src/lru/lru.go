@@ -2,14 +2,13 @@ package lru
 
 import "container/list"
 
-// Cache is a LRU cache. It is not safe for concurrent access.
+// 不能并发访问
 type Cache struct {
-	maxBytes int64
-	nbytes   int64
-	ll       *list.List
-	cache    map[string]*list.Element
-	// optional and executed when an entry is purged.
-	OnEvicted func(key string, value Value)
+	maxBytes  int64                         //最大内存
+	nbytes    int64                         //已使用内存
+	ll        *list.List                    //指向双向链表的一个指针
+	cache     map[string]*list.Element      //*list.Element是指向双向链表中的元素类型，这里是一个字典指向双向链表
+	OnEvicted func(key string, value Value) //删除节点时候需要选择调用的回调函数，构建的时候默认为空
 }
 
 type entry struct {
@@ -17,12 +16,11 @@ type entry struct {
 	value Value
 }
 
-// Value use Len to count how many bytes it takes
 type Value interface {
 	Len() int
 }
 
-// New is the Constructor of Cache
+// 延迟初始化
 func New(maxBytes int64, onEvicted func(string, Value)) *Cache {
 	return &Cache{
 		maxBytes:  maxBytes,
@@ -32,7 +30,7 @@ func New(maxBytes int64, onEvicted func(string, Value)) *Cache {
 	}
 }
 
-// Add adds a value to the cache.
+// 添加数据往lru cache中
 func (c *Cache) Add(key string, value Value) {
 	if ele, ok := c.cache[key]; ok {
 		c.ll.MoveToFront(ele)
@@ -49,7 +47,7 @@ func (c *Cache) Add(key string, value Value) {
 	}
 }
 
-// Get look ups a key's value
+// 获取值
 func (c *Cache) Get(key string) (value Value, ok bool) {
 	if ele, ok := c.cache[key]; ok {
 		c.ll.MoveToFront(ele)
@@ -59,7 +57,7 @@ func (c *Cache) Get(key string) (value Value, ok bool) {
 	return
 }
 
-// RemoveOldest removes the oldest item
+// 删除链表尾部的元素并调用回调函数
 func (c *Cache) RemoveOldest() {
 	ele := c.ll.Back()
 	if ele != nil {
@@ -73,7 +71,6 @@ func (c *Cache) RemoveOldest() {
 	}
 }
 
-// Len the number of cache entries
 func (c *Cache) Len() int {
 	return c.ll.Len()
 }

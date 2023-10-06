@@ -6,7 +6,7 @@ import (
 )
 
 type cache struct {
-	mu         sync.Mutex
+	mu         sync.Mutex //添加了互斥锁防止并发访问的时候出现问题
 	lru        *lru.Cache
 	cacheBytes int64
 }

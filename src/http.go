@@ -3,15 +3,12 @@ package geecache
 import (
 	"fmt"
 	"geecache/consistenthash"
-	pb "geecache/geecachepb"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
-
-	"github.com/golang/protobuf/proto"
 )
 
 const (
@@ -19,7 +16,7 @@ const (
 	defaultReplicas = 50
 )
 
-// HTTPPool implements PeerPicker for a pool of HTTP peers.
+// 实现了 PeerPicker 接口
 type HTTPPool struct {
 	// this peer's base URL, e.g. "https://example.net:8000"
 	self        string
@@ -29,7 +26,7 @@ type HTTPPool struct {
 	httpGetters map[string]*httpGetter // keyed by e.g. "http://10.0.0.2:8008"
 }
 
-// NewHTTPPool initializes an HTTP pool of peers.
+// 延迟初始化
 func NewHTTPPool(self string) *HTTPPool {
 	return &HTTPPool{
 		self:     self,
@@ -42,7 +39,7 @@ func (p *HTTPPool) Log(format string, v ...interface{}) {
 	log.Printf("[Server %s] %s", p.self, fmt.Sprintf(format, v...))
 }
 
-// ServeHTTP handle all http requests
+// 处理请求
 func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !strings.HasPrefix(r.URL.Path, p.basePath) {
 		panic("HTTPPool serving unexpected path: " + r.URL.Path)
@@ -70,18 +67,11 @@ func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Write the value to the response body as a proto message.
-	body, err := proto.Marshal(&pb.Response{Value: view.ByteSlice()})
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Write(body)
+	w.Write(view.ByteSlice())
 }
 
-// Set updates the pool's list of peers.
+// 设置并更新节点
 func (p *HTTPPool) Set(peers ...string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -93,7 +83,7 @@ func (p *HTTPPool) Set(peers ...string) {
 	}
 }
 
-// PickPeer picks a peer according to key
+// 选择节点
 func (p *HTTPPool) PickPeer(key string) (PeerGetter, bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -110,33 +100,29 @@ type httpGetter struct {
 	baseURL string
 }
 
-func (h *httpGetter) Get(in *pb.Request, out *pb.Response) error {
+func (h *httpGetter) Get(group string, key string) ([]byte, error) {
 	u := fmt.Sprintf(
 		"%v%v/%v",
 		h.baseURL,
-		url.QueryEscape(in.GetGroup()),
-		url.QueryEscape(in.GetKey()),
+		url.QueryEscape(group),
+		url.QueryEscape(key),
 	)
 	res, err := http.Get(u)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("server returned: %v", res.Status)
+		return nil, fmt.Errorf("server returned: %v", res.Status)
 	}
 
 	bytes, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		return fmt.Errorf("reading response body: %v", err)
+		return nil, fmt.Errorf("reading response body: %v", err)
 	}
 
-	if err = proto.Unmarshal(bytes, out); err != nil {
-		return fmt.Errorf("decoding response body: %v", err)
-	}
-
-	return nil
+	return bytes, nil
 }
 
 var _ PeerGetter = (*httpGetter)(nil)
